@@ -6,6 +6,7 @@ import io
 import math
 import datetime as dt
 from typing import Dict, Tuple
+import openpyxl  # noqa: F401  # Ensure Excel engine is available
 
 st.set_page_config(
     page_title="経営計画策定（単年）｜Streamlit",
@@ -593,9 +594,6 @@ with tab_export:
         return df
 
     df_sens = recompute_sensitivity_table()
-    import io
-    with pd.ExcelWriter(io.BytesIO(), engine="openpyxl") as tmp:
-        pass  # ensure openpyxl is imported
 
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
