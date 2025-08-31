@@ -597,9 +597,18 @@ with tab_export:
 
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        df_num.to_excel(writer, sheet_name="金額", index=True)
-        df_kpi.to_excel(writer, sheet_name="KPI", index=True)
-        df_sens.to_excel(writer, sheet_name="感応度", index=False)
+        sheets_written = 0
+        if isinstance(df_num, pd.DataFrame) and not df_num.empty:
+            df_num.to_excel(writer, sheet_name="金額", index=True)
+            sheets_written += 1
+        if isinstance(df_kpi, pd.DataFrame) and not df_kpi.empty:
+            df_kpi.to_excel(writer, sheet_name="KPI", index=True)
+            sheets_written += 1
+        if isinstance(df_sens, pd.DataFrame) and not df_sens.empty:
+            df_sens.to_excel(writer, sheet_name="感応度", index=False)
+            sheets_written += 1
+        if sheets_written == 0:
+            pd.DataFrame().to_excel(writer, sheet_name="Sheet1")
     data = output.getvalue()
 
     st.download_button(
