@@ -68,9 +68,12 @@ def format_percent(x: float) -> str:
 
 # --- dual input helper ----------------------------------------------------
 
-def _sync_pct_from_abs(base: float, pct_key: str, abs_key: str, *, margin_pt=False):
+def _sync_pct_from_abs(
+    base: float, pct_key: str, abs_key: str, src_key: str | None = None, *, margin_pt=False
+):
     """abs入力からpctへ反映"""
-    tgt = st.session_state.get(abs_key, base)
+    tgt = st.session_state.get(src_key or abs_key, base)
+    st.session_state[abs_key] = tgt
     if margin_pt:
         pct = tgt - base
     else:
@@ -78,9 +81,12 @@ def _sync_pct_from_abs(base: float, pct_key: str, abs_key: str, *, margin_pt=Fal
     st.session_state[pct_key] = pct
 
 
-def _sync_abs_from_pct(base: float, pct_key: str, abs_key: str, *, margin_pt=False):
+def _sync_abs_from_pct(
+    base: float, pct_key: str, abs_key: str, src_key: str | None = None, *, margin_pt=False
+):
     """pct入力からabsへ反映"""
-    pct = st.session_state.get(pct_key, 0.0)
+    pct = st.session_state.get(src_key or pct_key, 0.0)
+    st.session_state[pct_key] = pct
     tgt = base + pct if margin_pt else base * (1 + pct)
     st.session_state[abs_key] = tgt
 
@@ -105,6 +111,7 @@ def dual_input(label: str, base_value: float, mode: str, pct_key: str, abs_key: 
             key=pct_key,
             on_change=_sync_abs_from_pct,
             args=(base_value, pct_key, abs_key),
+            kwargs=dict(margin_pt=margin_pt),
         )
         st.number_input(
             "実額", value=float(st.session_state[abs_key]), step=1.0,
@@ -119,7 +126,8 @@ def dual_input(label: str, base_value: float, mode: str, pct_key: str, abs_key: 
             step=1.0,
             key=abs_key,
             on_change=_sync_pct_from_abs,
-            args=(base_value, pct_key, abs_key, margin_pt),
+            args=(base_value, pct_key, abs_key),
+            kwargs=dict(margin_pt=margin_pt),
         )
         st.number_input(
             "％" if not margin_pt else "pt",
@@ -134,25 +142,35 @@ def dual_input(label: str, base_value: float, mode: str, pct_key: str, abs_key: 
 def quick_slider(label: str, mode: str, pct_key: str, abs_key: str, base_value: float,
                  pct_range=(-0.5, 0.5), kind="amount"):
     margin_pt = kind == "margin_pt"
+    if pct_key not in st.session_state:
+        st.session_state[pct_key] = 0.0
+    if abs_key not in st.session_state:
+        st.session_state[abs_key] = float(base_value)
     if mode == "％":
+        wkey = f"{pct_key}_quick"
         st.slider(
             label,
             min_value=pct_range[0],
             max_value=pct_range[1],
-            key=pct_key,
+            value=st.session_state[pct_key],
+            key=wkey,
             step=0.01,
             on_change=_sync_abs_from_pct,
-            args=(base_value, pct_key, abs_key, margin_pt),
+            args=(base_value, pct_key, abs_key, wkey),
+            kwargs=dict(margin_pt=margin_pt),
         )
     else:
+        wkey = f"{abs_key}_quick"
         st.slider(
             label,
             min_value=max(0.0, base_value * (1 + pct_range[0])),
             max_value=base_value * (1 + pct_range[1]),
-            key=abs_key,
+            value=st.session_state[abs_key],
+            key=wkey,
             step=1.0,
             on_change=_sync_pct_from_abs,
-            args=(base_value, pct_key, abs_key, margin_pt),
+            args=(base_value, pct_key, abs_key, wkey),
+            kwargs=dict(margin_pt=margin_pt),
         )
 
 # ============================================================
