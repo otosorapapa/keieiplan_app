@@ -61,6 +61,9 @@ ITEMS = [
     ("LDR", "労働分配率", "KPI")
 ]
 
+# Mapping from item code to label for quick lookup
+ITEM_LABELS = {code: label for code, label, _ in ITEMS}
+
 def millions(x):
     return x / 1_000_000
 
@@ -309,7 +312,14 @@ with tab_input:
                 c = col2
             else:
                 c = col3
-            val = c.number_input(f"{dict(ITEMS)[code]}（金額上書き）", min_value=0.0, value=0.0, step=1_000_000.0, key=f"ov_{code}")
+            # Look up label without reconstructing the dictionary each time
+            val = c.number_input(
+                f"{ITEM_LABELS[code]}（金額上書き）",
+                min_value=0.0,
+                value=0.0,
+                step=1_000_000.0,
+                key=f"ov_{code}"
+            )
             if val > 0:
                 override_inputs[code] = val
 
