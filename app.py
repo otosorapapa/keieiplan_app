@@ -92,21 +92,22 @@ def dual_input(label: str, base_value: float, mode: str, pct_key: str, abs_key: 
     if pct_key not in st.session_state:
         st.session_state[pct_key] = 0.0
     if abs_key not in st.session_state:
-        st.session_state[abs_key] = base_value
+        st.session_state[abs_key] = float(base_value)
     col1, col2 = st.columns([1, 1])
     if mode == "％":
+        fmt = "%.2f" if not margin_pt else "%.1f"
         st.slider(
             label,
             min_value=pct_range[0],
             max_value=pct_range[1],
-            step=0.01 if margin_pt else 0.01,
-            format="%" if not margin_pt else "{:.1f}",
+            step=0.01,
+            format=fmt,
             key=pct_key,
             on_change=_sync_abs_from_pct,
             args=(base_value, pct_key, abs_key),
         )
         st.number_input(
-            "実額", value=st.session_state[abs_key], step=1.0,
+            "実額", value=float(st.session_state[abs_key]), step=1.0,
             key=f"{abs_key}_dummy", disabled=True, format="%f")
         return st.session_state[abs_key]
     else:
@@ -121,7 +122,9 @@ def dual_input(label: str, base_value: float, mode: str, pct_key: str, abs_key: 
             args=(base_value, pct_key, abs_key, margin_pt),
         )
         st.number_input(
-            "％" if not margin_pt else "pt", value=st.session_state[pct_key],
+            "％" if not margin_pt else "pt",
+            value=float(st.session_state[pct_key]),
+            step=0.01,
             key=f"{pct_key}_dummy", disabled=True, format="%f")
         return st.session_state[abs_key]
 
