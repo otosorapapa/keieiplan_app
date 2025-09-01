@@ -310,6 +310,22 @@ def render_bullet_kpi(base: dict, plan: dict, target: float):
     st.pyplot(fig, use_container_width=True)
 
 
+def render_profit_gauge(res: dict, target: float) -> None:
+    """達成度を示すシンプルな進捗ゲージ"""
+    st.subheader("利益達成度")
+    st.markdown(
+        "<style>.stProgress > div > div > div > div {background-color: #0B3D91;}</style>",
+        unsafe_allow_html=True,
+    )
+    progress = res['ord'] / target if target else 0
+    progress = np.clip(progress, 0.0, 1.0)
+    st.progress(progress)
+    if res['ord'] >= target:
+        st.success(f"目標利益 {format_money(target)} を達成しています！")
+    else:
+        st.info(f"目標まであと {format_money(target - res['ord'])}")
+
+
 # ============================================================
 #  メインアプリ
 # ============================================================
@@ -333,7 +349,9 @@ def main():
         st.subheader("KPI と可視化")
         render_kpi_cards(plan_res)
         render_waterfall_mck(BASE_PLAN, plan_inputs)
-        render_bullet_kpi(BASE_PLAN, plan_inputs, target=BASE_PLAN['sales']*0.05)
+        target_ord = BASE_PLAN['sales'] * 0.05
+        render_bullet_kpi(BASE_PLAN, plan_inputs, target=target_ord)
+        render_profit_gauge(plan_res, target=target_ord)
 
     st.subheader("計画サマリー（表）")
     df = pd.DataFrame(
