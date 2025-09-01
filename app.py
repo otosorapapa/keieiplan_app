@@ -322,6 +322,41 @@ def generate_ai_explanation(res: dict) -> str:
 #  可視化
 # ============================================================
 
+
+def build_chart_style_from_sidebar() -> dict:
+    st.sidebar.subheader("グラフ表示のカスタマイズ")
+    with st.sidebar.expander("🎨 配色・表示設定", expanded=False):
+        fig_bg = st.color_picker("図の背景色 (figure)", "#FFFFFF")
+        ax_bg = st.color_picker("軸の背景色 (axes)", "#FFFFFF")
+        grid_on = st.checkbox("グリッドを表示", True)
+        grid_color = st.color_picker("グリッド色", "#D0D0D0")
+        font_color = st.color_picker("フォント色", "#222222")
+        font_size = st.slider("フォントサイズ", 8, 18, 11, 1)
+        alpha = st.slider("透過度 (alpha)", 10, 100, 100, 1) / 100.0
+
+    with st.sidebar.expander("🧱 バー／線／ノードの設定", expanded=False):
+        pos_color = st.color_picker("正の値の色", "#0B3D91")
+        neg_color = st.color_picker("負の値の色", "#9E9E9E")
+        line_color = st.color_picker("線の色（バレット指標線など）", "#FF0000")
+        marker_size = st.slider("ノード/マーカーサイズ", 4, 20, 8, 1)
+        bar_width = st.slider("バーの太さ（相対）", 1, 100, 100, 1) / 100.0
+
+    return dict(
+        fig_bg=fig_bg,
+        ax_bg=ax_bg,
+        grid_on=grid_on,
+        grid_color=grid_color,
+        font_color=font_color,
+        font_size=font_size,
+        alpha=alpha,
+        pos_color=pos_color,
+        neg_color=neg_color,
+        line_color=line_color,
+        marker_size=marker_size,
+        bar_width=bar_width,
+    )
+
+
 def render_kpi_cards(res: dict):
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("売上高", format_money(res['sales']))
@@ -330,10 +365,9 @@ def render_kpi_cards(res: dict):
     col4.metric("BE売上", format_money(res['be_sales']))
 
 
-def render_waterfall_mck(base: dict, plan: dict):
+def render_waterfall_mck(base: dict, plan: dict, style: dict):
     base_res = compute_plan(base)
     plan_res = compute_plan(plan)
-    steps = []
     base_op = base_res['op']
     sales_delta = (plan['sales'] - base['sales']) * base['gp_rate']
     gp_delta = plan['sales'] * (plan['gp_rate'] - base['gp_rate'])
@@ -341,62 +375,104 @@ def render_waterfall_mck(base: dict, plan: dict):
     opex_h_delta = base['opex_h'] - plan['opex_h']
     opex_dep_delta = base['opex_dep'] - plan['opex_dep']
     opex_oth_delta = base['opex_oth'] - plan['opex_oth']
-    steps = [
-        ("ベースOP", base_op),
-        ("売上増減", sales_delta),
-        ("粗利率変化", gp_delta),
-        ("販管費", opex_f_delta),
-        ("人件費", opex_h_delta),
-        ("減価償却", opex_dep_delta),
-        ("その他", opex_oth_delta),
-    ]
-    vals = [s[1] for s in steps]
-    labels = [s[0] for s in steps]
-    cum = [base_op]
-    for v in vals[1:]:
-        cum.append(cum[-1] + v)
+
+    labels = ["ベースOP", "売上増減", "粗利率変化", "販管費", "人件費", "減価償却", "その他"]
+    vals = [base_op, sales_delta, gp_delta, opex_f_delta, opex_h_delta, opex_dep_delta, opex_oth_delta]
+
     fig, ax = plt.subplots(figsize=(6, 4))
-    colors = ["#0B3D91" if v >= 0 else "#9E9E9E" for v in vals[1:]]
-    ax.bar(range(1, len(vals)), vals[1:], color=colors)
-    ax.axhline(0, color="#D0D0D0", linewidth=0.8)
+    fig.patch.set_facecolor(style["fig_bg"])
+    ax.set_facecolor(style["ax_bg"])
+    for spine in ["top", "right"]:
+        ax.spines[spine].set_visible(False)
+    ax.tick_params(colors=style["font_color"], labelsize=style["font_size"])
+    ax.yaxis.label.set_color(style["font_color"])
+    ax.xaxis.label.set_color(style["font_color"])
+
+    ax.grid(style["grid_on"], color=style["grid_color"], linewidth=0.6, axis="y")
+
+    colors = []
+    for i, v in enumerate(vals):
+        if i == 0:
+            colors.append(style["pos_color"])
+        else:
+            colors.append(style["pos_color"] if v >= 0 else style["neg_color"])
+
+    ax.bar(range(len(vals)), vals, color=colors, alpha=style["alpha"], width=0.8 * style["bar_width"])
+    ax.axhline(0, color=style["grid_color"], linewidth=0.8)
+
     ax.set_xticks(range(len(labels)))
-    ax.set_xticklabels(labels, rotation=45, ha="right")
+    ax.set_xticklabels(labels, rotation=45, ha="right", color=style["font_color"])
     ax.yaxis.set_major_formatter(FuncFormatter(lambda x, _: f"¥{x:,.0f}"))
-    for i, v in enumerate(vals[1:], start=1):
-        ax.text(i, v + (1 if v >= 0 else -1) * max(vals) * 0.02,
-                format_money(v), ha='center', va='bottom' if v >= 0 else 'top')
+
+    offset = max(abs(x) for x in vals) * 0.02 if any(vals) else 1.0
+    for i, v in enumerate(vals):
+        ax.plot(i, v, marker="o", markersize=style["marker_size"], color=style["font_color"], alpha=0.9)
+        ax.text(
+            i,
+            v + (offset if v >= 0 else -offset),
+            format_money(v),
+            ha="center",
+            va="bottom" if v >= 0 else "top",
+            color=style["font_color"],
+            fontsize=style["font_size"],
+        )
+
     fig.tight_layout()
     st.pyplot(fig, use_container_width=True)
     buf = io.BytesIO()
-    fig.savefig(buf, format='png', dpi=200, bbox_inches='tight')
-    st.download_button("📥 PNG保存（グラフ）", data=buf.getvalue(),
-                       file_name="waterfall.png", mime="image/png")
+    fig.savefig(buf, format="png", dpi=200, bbox_inches="tight")
+    st.download_button(
+        "📥 PNG保存（グラフ）",
+        data=buf.getvalue(),
+        file_name="waterfall.png",
+        mime="image/png",
+    )
 
 
-def render_bullet_kpi(base: dict, plan: dict, target: float):
+def render_bullet_kpi(base: dict, plan: dict, target: float, style: dict):
     base_res = compute_plan(base)
     plan_res = compute_plan(plan)
     fig, ax = plt.subplots(figsize=(6, 1.2))
-    ax.barh(0, plan_res['ord'], color="#0B3D91", height=0.3)
-    ax.barh(0, base_res['ord'], color="#9E9E9E", height=0.3)
-    ax.axvline(target, color="red", linestyle="--")
+
+    fig.patch.set_facecolor(style["fig_bg"])
+    ax.set_facecolor(style["ax_bg"])
+    for spine in ["top", "right"]:
+        ax.spines[spine].set_visible(False)
+    ax.tick_params(colors=style["font_color"], labelsize=style["font_size"])
+    ax.grid(style["grid_on"], color=style["grid_color"], linewidth=0.6, axis="x")
+
+    ax.barh(0, plan_res['ord'], color=style["pos_color"], height=0.3, alpha=style["alpha"])
+    ax.barh(0, base_res['ord'], color=style["neg_color"], height=0.3, alpha=style["alpha"])
+    ax.axvline(target, color=style["line_color"], linestyle="--", linewidth=2)
+
     ax.set_yticks([])
     ax.xaxis.set_major_formatter(FuncFormatter(lambda x, _: f"¥{x:,.0f}"))
-    ax.set_xlabel("経常利益")
+    ax.set_xlabel("経常利益", color=style["font_color"], fontsize=style["font_size"])
+
+    ax.plot(target, 0, marker="o", markersize=style["marker_size"], color=style["line_color"])
+
     fig.tight_layout()
     st.pyplot(fig, use_container_width=True)
 
 
-def render_profit_gauge(res: dict, target: float) -> None:
-    """達成度を示すシンプルな進捗ゲージ"""
+def render_profit_gauge(res: dict, target: float, style: dict) -> None:
     st.subheader("利益達成度")
-    st.markdown(
-        "<style>.stProgress > div > div > div > div {background-color: #0B3D91;}</style>",
-        unsafe_allow_html=True,
-    )
     progress = res['ord'] / target if target else 0
-    progress = np.clip(progress, 0.0, 1.0)
-    st.progress(progress)
+    progress = float(np.clip(progress, 0.0, 1.0))
+
+    fig, ax = plt.subplots(figsize=(6, 0.6))
+    fig.patch.set_facecolor(style["fig_bg"])
+    ax.set_facecolor(style["ax_bg"])
+    ax.barh(0, 1.0, color=style["neg_color"], alpha=style["alpha"])
+    ax.barh(0, progress, color=style["pos_color"], alpha=style["alpha"])
+    ax.set_xlim(0, 1.0)
+    ax.set_yticks([])
+    ax.set_xticks([])
+    for spine in ["top", "right", "left", "bottom"]:
+        ax.spines[spine].set_visible(False)
+    fig.tight_layout()
+    st.pyplot(fig, use_container_width=True)
+
     if res['ord'] >= target:
         st.success(f"目標利益 {format_money(target)} を達成しています！")
     else:
@@ -412,7 +488,8 @@ def main():
     plan_inputs = collect_plan_inputs(mode)
     plan_res = compute_plan(plan_inputs)
 
-    # メインレイアウト
+    style = build_chart_style_from_sidebar()
+
     colL, colR = st.columns([6, 6], gap="large")
     with colL:
         st.subheader("🎛️ クイック・コントロール")
@@ -426,10 +503,10 @@ def main():
         with st.container():
             st.subheader("📊 KPI と可視化")
             render_kpi_cards(plan_res)
-            render_waterfall_mck(BASE_PLAN, plan_inputs)
+            render_waterfall_mck(BASE_PLAN, plan_inputs, style)
             target_ord = BASE_PLAN['sales'] * 0.05
-            render_bullet_kpi(BASE_PLAN, plan_inputs, target=target_ord)
-            render_profit_gauge(plan_res, target=target_ord)
+            render_bullet_kpi(BASE_PLAN, plan_inputs, target=target_ord, style=style)
+            render_profit_gauge(plan_res, target=target_ord, style=style)
 
     with st.container():
         st.subheader("📝 計画サマリー")
