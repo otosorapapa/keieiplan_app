@@ -479,6 +479,142 @@ def render_profit_gauge(res: dict, target: float, style: dict) -> None:
         st.info(f"目標まであと {format_money(target - res['ord'])}")
 
 
+def build_viz_controls():
+    st.subheader("📈 ビジュアライズ")
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        viz_type = st.radio(
+            "表示グラフを選択",
+            ["ウォーターフォール", "トルネード（感応度）", "コスト構成スタック", "P/Lブリッジ（ベース→計画）"],
+            horizontal=True,
+        )
+    with col2:
+        sens_step = st.slider("感応度ステップ（±）", 0.01, 0.20, 0.10, 0.01)
+    return viz_type, sens_step
+
+
+def render_tornado_sensitivity(base: dict, plan: dict, step: float = 0.1):
+    """指標：経常利益に対する各変数の影響度（±step の差分）"""
+    keys = [
+        ("sales", "売上高", "amount"),
+        ("gp_rate", "粗利率", "rate"),
+        ("opex_h", "人件費", "amount"),
+        ("opex_fixed", "販管費（固定費）", "amount"),
+        ("opex_dep", "減価償却", "amount"),
+        ("opex_oth", "その他費用", "amount"),
+    ]
+    base_res = compute_plan(plan)
+    base_ord = base_res["ord"]
+    items, lows, highs = [], [], []
+
+    for k, label, kind in keys:
+        p_low = plan.copy()
+        p_high = plan.copy()
+        if kind == "rate":
+            p_low[k] = max(0.0, plan[k] - step)
+            p_high[k] = min(1.0, plan[k] + step)
+        else:
+            p_low[k] = max(0.0, plan[k] * (1 - step))
+            p_high[k] = plan[k] * (1 + step)
+
+        low_ord = compute_plan(p_low)["ord"]
+        high_ord = compute_plan(p_high)["ord"]
+        items.append(label)
+        lows.append(low_ord - base_ord)
+        highs.append(high_ord - base_ord)
+
+    deltas = [(min(l, h), max(l, h)) for l, h in zip(lows, highs)]
+    ranges = [abs(lo) + abs(hi) for lo, hi in deltas]
+    order = np.argsort(ranges)[::-1]
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    for idx, i in enumerate(order):
+        lo, hi = deltas[i]
+        ax.barh(idx, hi, color="#0B3D91")
+        ax.barh(idx, lo, color="#9E9E9E")
+    ax.set_yticks(np.arange(len(items)))
+    ax.set_yticklabels([items[i] for i in order])
+    ax.xaxis.set_major_formatter(FuncFormatter(lambda x, _: f"¥{x:,.0f}"))
+    ax.axvline(0, color="#D0D0D0", linewidth=0.8)
+    ax.set_xlabel("経常利益への寄与（差分）")
+    fig.tight_layout()
+    st.pyplot(fig, use_container_width=True)
+
+
+def render_cost_stack(plan: dict):
+    """粗利・各費用の構成をスタック棒で表示"""
+    res = compute_plan(plan)
+    labels = ["粗利", "人件費", "販管費（固定）", "減価償却", "その他費用"]
+    vals = [
+        res["gross"],
+        res["opex_h"],
+        res["opex_fixed"],
+        res["opex_dep"],
+        res["opex_oth"],
+    ]
+    total = sum(vals)
+    fig, ax = plt.subplots(figsize=(6, 1.5))
+    left = 0.0
+    for v in vals:
+        ax.barh(0, v, left=left, height=0.5)
+        left += v
+    ax.set_yticks([])
+    ax.set_xlim(0, max(total * 1.05, 1))
+    ax.xaxis.set_major_formatter(FuncFormatter(lambda x, _: f"¥{x:,.0f}"))
+    ax.set_xlabel("金額（構成比）")
+    handles = [plt.Rectangle((0, 0), 1, 1) for _ in vals]
+    ax.legend(handles, labels, bbox_to_anchor=(1.02, 1), loc="upper left", frameon=False)
+    fig.tight_layout()
+    st.pyplot(fig, use_container_width=True)
+
+
+def render_pl_bridge(base: dict, plan: dict):
+    """ベース→計画のP/Lブリッジ（OPの増減要因）"""
+    base_res = compute_plan(base)
+    plan_res = compute_plan(plan)
+    steps = [
+        ("ベースOP", base_res["op"]),
+        ("売上×ベース粗利率", (plan["sales"] - base["sales"]) * base_res["gp_rate"]),
+        ("粗利率変化", plan["sales"] * (plan["gp_rate"] - base_res["gp_rate"])),
+        ("人件費Δ", base["opex_h"] - plan["opex_h"]),
+        ("販管費Δ", base["opex_fixed"] - plan["opex_fixed"]),
+        ("減価償却Δ", base["opex_dep"] - plan["opex_dep"]),
+        ("その他Δ", base["opex_oth"] - plan["opex_oth"]),
+    ]
+    labels = [s[0] for s in steps]
+    vals = [s[1] for s in steps]
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    colors = ["#0B3D91" if v >= 0 else "#9E9E9E" for v in vals]
+    ax.bar(range(len(vals)), vals, color=colors)
+    ax.axhline(0, color="#D0D0D0", linewidth=0.8)
+    ax.set_xticks(range(len(labels)))
+    ax.set_xticklabels(labels, rotation=45, ha="right")
+    ax.yaxis.set_major_formatter(FuncFormatter(lambda x, _: f"¥{x:,.0f}"))
+    for i, v in enumerate(vals):
+        ax.text(
+            i,
+            v + (1 if v >= 0 else -1) * max(vals, key=abs) * 0.02,
+            f"{format_money(v)}",
+            ha="center",
+            va="bottom" if v >= 0 else "top",
+        )
+    fig.tight_layout()
+    st.pyplot(fig, use_container_width=True)
+
+
+def render_visualizations(viz_type: str, sens_step: float, base: dict, plan: dict, style: dict):
+    """選択に応じたグラフ描画の統括"""
+    if viz_type == "ウォーターフォール":
+        render_waterfall_mck(base, plan, style)
+    elif viz_type == "トルネード（感応度）":
+        render_tornado_sensitivity(base, plan, sens_step)
+    elif viz_type == "コスト構成スタック":
+        render_cost_stack(plan)
+    else:
+        render_pl_bridge(base, plan)
+
+
 # ============================================================
 #  メインアプリ
 # ============================================================
@@ -503,7 +639,8 @@ def main():
         with st.container():
             st.subheader("📊 KPI と可視化")
             render_kpi_cards(plan_res)
-            render_waterfall_mck(BASE_PLAN, plan_inputs, style)
+            viz_type, sens_step = build_viz_controls()
+            render_visualizations(viz_type, sens_step, BASE_PLAN, plan_inputs, style)
             target_ord = BASE_PLAN['sales'] * 0.05
             render_bullet_kpi(BASE_PLAN, plan_inputs, target=target_ord, style=style)
             render_profit_gauge(plan_res, target=target_ord, style=style)
