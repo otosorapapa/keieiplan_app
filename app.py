@@ -6,6 +6,8 @@ import matplotlib as mpl
 from matplotlib.ticker import FuncFormatter
 import io
 import datetime as dt
+import os
+from openai import OpenAI
 
 # ============================================================
 #  基本設定 / McKinsey style
@@ -212,6 +214,34 @@ def compute_plan(plan: dict) -> dict:
 
 
 # ============================================================
+#  Generative AI helpers
+# ============================================================
+
+def generate_ai_summary(res: dict) -> str:
+    """Generate a brief summary and commentary using OpenAI."""
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return "OPENAI_API_KEY が設定されていません。環境変数に API キーをセットしてください。"
+    client = OpenAI(api_key=api_key)
+    prompt = (
+        "あなたは経営コンサルタントです。以下の経営計画データを基に、"
+        "主要指標の要約と短いコメントを日本語で作成してください。\n"
+        f"売上高: {res['sales']:,} 円\n"
+        f"粗利率: {res['gp_rate']*100:.1f}%\n"
+        f"経常利益: {res['ord']:,} 円\n"
+        f"損益分岐点売上: {res['be_sales']:,} 円"
+    )
+    try:
+        completion = client.responses.create(
+            model="gpt-4o-mini",
+            input=prompt,
+        )
+        return completion.output_text.strip()
+    except Exception as e:
+        return f"AIサマリー生成に失敗しました: {e}"
+
+
+# ============================================================
 #  可視化
 # ============================================================
 
@@ -314,6 +344,9 @@ def main():
         }
     )
     st.dataframe(df, use_container_width=True)
+
+    st.subheader("AIサマリー")
+    st.write(generate_ai_summary(plan_res))
 
     # Excel export
     buf = io.BytesIO()
