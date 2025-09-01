@@ -31,8 +31,10 @@ def set_mckinsey_style() -> None:
     mpl.rcParams["axes.facecolor"] = "white"
     mpl.rcParams["axes.edgecolor"] = "#D0D0D0"
     mpl.rcParams["axes.linewidth"] = 0.5
-    mpl.rcParams["xtick.color"] = "#54565A"
-    mpl.rcParams["ytick.color"] = "#54565A"
+    mpl.rcParams["xtick.color"] = "black"
+    mpl.rcParams["ytick.color"] = "black"
+    mpl.rcParams["axes.labelcolor"] = "black"
+    mpl.rcParams["text.color"] = "black"
     mpl.rcParams["axes.spines.top"] = False
     mpl.rcParams["axes.spines.right"] = False
     mpl.rcParams["grid.color"] = "#D0D0D0"
@@ -41,6 +43,50 @@ def set_mckinsey_style() -> None:
 
 
 set_mckinsey_style()
+
+# ------------------------------------------------------------
+#  Custom CSS for light/dark mode and spacing
+# ------------------------------------------------------------
+st.markdown(
+    """
+    <style>
+    :root {
+        --base-bg: #F5F5F5;
+        --base-text: #000000;
+        --primary: #0B3D91;
+    }
+    [data-theme="dark"] {
+        --base-bg: #1E1E1E;
+        --base-text: #FFFFFF;
+    }
+    html, body, [class*="stApp"] {
+        background-color: var(--base-bg);
+        color: var(--base-text);
+    }
+    .stMetric {
+        background-color: rgba(11, 61, 145, 0.1);
+        border: 1px solid var(--primary);
+        border-radius: 8px;
+        padding: 0.5rem;
+        color: var(--base-text);
+    }
+    [data-theme="dark"] .stMetric {
+        background-color: rgba(11, 61, 145, 0.3);
+    }
+    .stMetric label {
+        color: var(--primary);
+    }
+    .stButton>button {
+        background-color: var(--primary);
+        color: #FFFFFF;
+    }
+    .stPlotlyChart, .stDataFrame, .stMetric, .stButton {
+        margin: 0.5rem 0;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 # ============================================================
 #  基礎データ
@@ -217,20 +263,12 @@ def compute_plan(plan: dict) -> dict:
 #  Generative AI helpers
 # ============================================================
 
-def generate_ai_summary(res: dict) -> str:
-    """Generate a brief summary and commentary using OpenAI."""
+
+def _openai_generate(prompt: str) -> str:
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         return "OPENAI_API_KEY が設定されていません。環境変数に API キーをセットしてください。"
     client = OpenAI(api_key=api_key)
-    prompt = (
-        "あなたは経営コンサルタントです。以下の経営計画データを基に、"
-        "主要指標の要約と短いコメントを日本語で作成してください。\n"
-        f"売上高: {res['sales']:,} 円\n"
-        f"粗利率: {res['gp_rate']*100:.1f}%\n"
-        f"経常利益: {res['ord']:,} 円\n"
-        f"損益分岐点売上: {res['be_sales']:,} 円"
-    )
     try:
         completion = client.responses.create(
             model="gpt-4o-mini",
@@ -238,7 +276,46 @@ def generate_ai_summary(res: dict) -> str:
         )
         return completion.output_text.strip()
     except Exception as e:
-        return f"AIサマリー生成に失敗しました: {e}"
+        return f"AI生成に失敗しました: {e}"
+
+
+def generate_ai_summary(res: dict) -> str:
+    """KPI要約を3行以内で生成"""
+    prompt = (
+        "あなたは経営コンサルタントです。以下の経営計画データを基に、"
+        "主要KPIのポイントを3行以内で簡潔に日本語で要約してください。\n"
+        f"売上高: {res['sales']:,} 円\n"
+        f"粗利率: {res['gp_rate']*100:.1f}%\n"
+        f"経常利益: {res['ord']:,} 円\n"
+        f"損益分岐点売上: {res['be_sales']:,} 円"
+    )
+    return _openai_generate(prompt)
+
+
+def generate_ai_comments(res: dict) -> str:
+    """改善余地やリスク要因のコメントを生成"""
+    prompt = (
+        "あなたは経営コンサルタントです。以下の経営計画データを基に、"
+        "改善余地やリスク要因を1〜2行でコメントしてください。\n"
+        f"売上高: {res['sales']:,} 円\n"
+        f"粗利率: {res['gp_rate']*100:.1f}%\n"
+        f"経常利益: {res['ord']:,} 円\n"
+        f"損益分岐点売上: {res['be_sales']:,} 円"
+    )
+    return _openai_generate(prompt)
+
+
+def generate_ai_explanation(res: dict) -> str:
+    """損益分岐点や利益構造を初心者向けに解説"""
+    prompt = (
+        "あなたは優しい経営コンサルタントです。以下の経営計画データを基に、"
+        "損益分岐点や利益構造を初心者でもわかるように簡単に説明してください。\n"
+        f"売上高: {res['sales']:,} 円\n"
+        f"粗利率: {res['gp_rate']*100:.1f}%\n"
+        f"経常利益: {res['ord']:,} 円\n"
+        f"損益分岐点売上: {res['be_sales']:,} 円"
+    )
+    return _openai_generate(prompt)
 
 
 # ============================================================
@@ -338,7 +415,7 @@ def main():
     # メインレイアウト
     colL, colR = st.columns([6, 6], gap="large")
     with colL:
-        st.subheader("クイック・コントロール")
+        st.subheader("🎛️ クイック・コントロール")
         quick_slider("売上高", mode, 'sales_pct', 'sales_abs', BASE_PLAN['sales'])
         quick_slider("粗利率(pt)", mode, 'gp_pt', 'gp_abs', BASE_PLAN['gp_rate'],
                      kind='margin_pt', pct_range=(-0.1, 0.1))
@@ -346,25 +423,30 @@ def main():
         quick_slider("販管費（固定費）", mode, 'opex_f_pct', 'opex_f_abs', BASE_PLAN['opex_fixed'])
 
     with colR:
-        st.subheader("KPI と可視化")
-        render_kpi_cards(plan_res)
-        render_waterfall_mck(BASE_PLAN, plan_inputs)
-        target_ord = BASE_PLAN['sales'] * 0.05
-        render_bullet_kpi(BASE_PLAN, plan_inputs, target=target_ord)
-        render_profit_gauge(plan_res, target=target_ord)
+        with st.container():
+            st.subheader("📊 KPI と可視化")
+            render_kpi_cards(plan_res)
+            render_waterfall_mck(BASE_PLAN, plan_inputs)
+            target_ord = BASE_PLAN['sales'] * 0.05
+            render_bullet_kpi(BASE_PLAN, plan_inputs, target=target_ord)
+            render_profit_gauge(plan_res, target=target_ord)
 
-    st.subheader("計画サマリー（表）")
-    df = pd.DataFrame(
-        {
-            "項目": ["売上高", "粗利率", "経常利益", "BE売上"],
-            "値": [format_money(plan_res['sales']), f"{plan_res['gp_rate']*100:.1f}%",
-                  format_money(plan_res['ord']), format_money(plan_res['be_sales'])],
-        }
-    )
-    st.dataframe(df, use_container_width=True)
+    with st.container():
+        st.subheader("📝 計画サマリー")
+        df = pd.DataFrame(
+            {
+                "項目": ["売上高", "粗利率", "経常利益", "BE売上"],
+                "値": [format_money(plan_res['sales']), f"{plan_res['gp_rate']*100:.1f}%",
+                      format_money(plan_res['ord']), format_money(plan_res['be_sales'])],
+            }
+        )
+        st.dataframe(df, use_container_width=True)
 
-    st.subheader("AIサマリー")
-    st.write(generate_ai_summary(plan_res))
+    with st.container():
+        st.subheader("🤖 AIサマリー")
+        st.write(generate_ai_summary(plan_res))
+        st.write(generate_ai_comments(plan_res))
+        st.write(generate_ai_explanation(plan_res))
 
     # Excel export
     buf = io.BytesIO()
