@@ -10,7 +10,9 @@ source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-3. アプリを起動します。
+3. OpenAI APIキーを環境変数 `OPENAI_API_KEY` に設定します。
+
+4. アプリを起動します。
 
 ```bash
 streamlit run app.py
@@ -22,6 +24,7 @@ streamlit run app.py
 - シナリオ比較（売上±、粗利±、目標経常、昨年同一、BEP）
 - 感応度分析（トルネード図）
 - Excelエクスポート（数値/KPI/感応度）
+- AIによる計画サマリーとコメント生成
 
 ## 注意
 - 計算はすべて「円」ベース、表示のみ「百万円/千円/円」を切替。
